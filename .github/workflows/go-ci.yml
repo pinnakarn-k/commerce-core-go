@@ -1,0 +1,61 @@
+name: Go CI
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: commerce_test
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd="pg_isready -U test -d commerce_test"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=5
+
+    env:
+      ENV: test
+      DATABASE_URL: postgres://test:test@localhost:5433/commerce_test?sslmode=disable
+      JWT_SECRET: test-secret
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.6"
+
+      - name: Install migrate
+        run: |
+          curl -L https://github.com/golang-migrate/migrate/releases/download/v4.18.1/migrate.linux-amd64.tar.gz | tar xvz
+          sudo mv migrate /usr/local/bin/migrate
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Install golangci-lint
+        run: go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8
+
+      - name: Run lint
+        run: make lint
+
+      - name: Run migrations
+        run: make migrate-test-up
+
+      - name: Run tests
+        run: make test

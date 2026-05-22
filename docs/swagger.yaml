@@ -1,0 +1,618 @@
+basePath: /api/v1
+definitions:
+  auth.LoginRequest:
+    properties:
+      email:
+        type: string
+      password:
+        type: string
+    required:
+    - email
+    - password
+    type: object
+  auth.LoginResponse:
+    properties:
+      access_token:
+        type: string
+      expires_in:
+        type: integer
+      token_type:
+        type: string
+    type: object
+  auth.LoginSuccessResponse:
+    properties:
+      data:
+        $ref: '#/definitions/auth.LoginResponse'
+    type: object
+  cart.CartItemResponse:
+    properties:
+      created_at:
+        type: string
+      id:
+        type: integer
+      is_selected:
+        type: boolean
+      order_id:
+        type: integer
+      product_id:
+        type: integer
+      quantity:
+        type: integer
+      status:
+        type: string
+      updated_at:
+        type: string
+      user_id:
+        type: integer
+    type: object
+  cart.CartItemSuccessResponse:
+    properties:
+      data:
+        $ref: '#/definitions/cart.CartItemResponse'
+    type: object
+  cart.CartItemsSuccessResponse:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/cart.CartItemResponse'
+        type: array
+    type: object
+  cart.RemoveCartItemResponse:
+    properties:
+      message:
+        type: string
+    type: object
+  cart.RemoveCartItemSuccessResponse:
+    properties:
+      data:
+        $ref: '#/definitions/cart.RemoveCartItemResponse'
+    type: object
+  cart.UpsertCartItemRequest:
+    properties:
+      product_id:
+        type: integer
+      quantity:
+        minimum: 1
+        type: integer
+    required:
+    - product_id
+    - quantity
+    type: object
+  checkout.CheckoutRequest:
+    properties:
+      idempotency_key:
+        type: string
+      payment_method:
+        type: string
+      payment_provider:
+        type: string
+    required:
+    - idempotency_key
+    - payment_method
+    - payment_provider
+    type: object
+  checkout.CheckoutResponse:
+    properties:
+      order:
+        $ref: '#/definitions/order.OrderResponse'
+      payment:
+        $ref: '#/definitions/payment.PaymentResponse'
+    type: object
+  checkout.CheckoutSuccessResponse:
+    properties:
+      data:
+        $ref: '#/definitions/checkout.CheckoutResponse'
+    type: object
+  order.OrderDetailResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/order.OrderItemResponse'
+        type: array
+      order:
+        $ref: '#/definitions/order.OrderResponse'
+    type: object
+  order.OrderDetailSuccessResponse:
+    properties:
+      data:
+        $ref: '#/definitions/order.OrderDetailResponse'
+    type: object
+  order.OrderItemResponse:
+    properties:
+      created_at:
+        type: string
+      currency:
+        type: string
+      id:
+        type: integer
+      line_total_amount:
+        type: integer
+      order_id:
+        type: integer
+      product_id:
+        type: integer
+      product_name:
+        type: string
+      product_sku:
+        type: string
+      quantity:
+        type: integer
+      unit_price_amount:
+        type: integer
+    type: object
+  order.OrderResponse:
+    properties:
+      cancelled_at:
+        type: string
+      created_at:
+        type: string
+      currency:
+        type: string
+      id:
+        type: integer
+      idempotency_key:
+        type: string
+      paid_at:
+        type: string
+      status:
+        type: string
+      total_amount:
+        type: integer
+      updated_at:
+        type: string
+      user_id:
+        type: integer
+    type: object
+  order.OrdersSuccessResponse:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/order.OrderResponse'
+        type: array
+    type: object
+  payment.MockWebhookRequest:
+    properties:
+      event_id:
+        type: string
+      provider:
+        type: string
+      provider_payment_id:
+        type: string
+      reason:
+        type: string
+      status:
+        type: string
+    required:
+    - event_id
+    - provider
+    - provider_payment_id
+    - status
+    type: object
+  payment.PaymentResponse:
+    properties:
+      amount:
+        type: integer
+      cancelled_at:
+        type: string
+      created_at:
+        type: string
+      currency:
+        type: string
+      expired_at:
+        type: string
+      failed_at:
+        type: string
+      failure_reason:
+        type: string
+      id:
+        type: integer
+      idempotency_key:
+        type: string
+      method:
+        type: string
+      order_id:
+        type: integer
+      paid_at:
+        type: string
+      payment_url:
+        type: string
+      provider:
+        type: string
+      provider_payment_id:
+        type: string
+      qr_code_url:
+        type: string
+      status:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  payment.PaymentSuccessResponse:
+    properties:
+      data:
+        $ref: '#/definitions/payment.PaymentResponse'
+    type: object
+  response.ErrorBody:
+    properties:
+      code:
+        type: string
+      fields:
+        items:
+          $ref: '#/definitions/response.FieldError'
+        type: array
+      message:
+        type: string
+    type: object
+  response.ErrorResponse:
+    properties:
+      error:
+        $ref: '#/definitions/response.ErrorBody'
+    type: object
+  response.FieldError:
+    properties:
+      code:
+        type: string
+      field:
+        type: string
+      message:
+        type: string
+    type: object
+  user.CreateUserRequest:
+    properties:
+      email:
+        type: string
+      name:
+        maxLength: 100
+        minLength: 2
+        type: string
+      password:
+        minLength: 8
+        type: string
+    required:
+    - email
+    - name
+    - password
+    type: object
+  user.Role:
+    enum:
+    - root
+    - admin
+    - user
+    type: string
+    x-enum-varnames:
+    - RoleRoot
+    - RoleAdmin
+    - RoleUser
+  user.Status:
+    enum:
+    - active
+    - disabled
+    - deleted
+    type: string
+    x-enum-varnames:
+    - StatusActive
+    - StatusDisabled
+    - StatusDeleted
+  user.UserResponse:
+    properties:
+      created_at:
+        type: string
+      deleted_at:
+        type: string
+      email:
+        type: string
+      id:
+        type: integer
+      name:
+        type: string
+      role:
+        $ref: '#/definitions/user.Role'
+      status:
+        $ref: '#/definitions/user.Status'
+      updated_at:
+        type: string
+    type: object
+  user.UserSuccessResponse:
+    properties:
+      data:
+        $ref: '#/definitions/user.UserResponse'
+    type: object
+info:
+  contact: {}
+  description: Production-minded e-commerce backend API.
+  title: Commerce Core Go API
+  version: "1.0"
+paths:
+  /auth/login:
+    post:
+      consumes:
+      - application/json
+      description: Authenticate user and return JWT access token.
+      parameters:
+      - description: Login request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/auth.LoginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/auth.LoginSuccessResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      summary: Login
+      tags:
+      - Auth
+  /me:
+    get:
+      description: Get current authenticated user.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/user.UserSuccessResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Current user
+      tags:
+      - Users
+  /me/cart:
+    get:
+      description: List active cart items for current user.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/cart.CartItemsSuccessResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List cart items
+      tags:
+      - Cart
+  /me/cart/items:
+    put:
+      consumes:
+      - application/json
+      description: Add product to cart or update quantity.
+      parameters:
+      - description: Cart item request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/cart.UpsertCartItemRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/cart.CartItemSuccessResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Add or update cart item
+      tags:
+      - Cart
+  /me/cart/items/{product_id}:
+    delete:
+      description: Remove product from cart.
+      parameters:
+      - description: Product ID
+        in: path
+        name: product_id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/cart.RemoveCartItemSuccessResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Remove cart item
+      tags:
+      - Cart
+  /me/orders:
+    get:
+      description: List current user orders.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/order.OrdersSuccessResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List orders
+      tags:
+      - Orders
+  /me/orders/{id}:
+    get:
+      description: Get current user order detail by ID.
+      parameters:
+      - description: Order ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/order.OrderDetailSuccessResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get order detail
+      tags:
+      - Orders
+  /me/orders/checkout:
+    post:
+      consumes:
+      - application/json
+      description: Create order and payment from selected cart items.
+      parameters:
+      - description: Checkout request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/checkout.CheckoutRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/checkout.CheckoutSuccessResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Checkout cart
+      tags:
+      - Checkout
+  /users:
+    post:
+      consumes:
+      - application/json
+      description: Register new user account.
+      parameters:
+      - description: Create user request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/user.CreateUserRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/user.UserSuccessResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      summary: Create user
+      tags:
+      - Users
+  /webhooks/payments/mock:
+    post:
+      consumes:
+      - application/json
+      description: Simulate payment provider webhook event.
+      parameters:
+      - description: Mock webhook request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/payment.MockWebhookRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/payment.PaymentSuccessResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      summary: Mock payment webhook
+      tags:
+      - Payments
+schemes:
+- http
+securityDefinitions:
+  BearerAuth:
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"
