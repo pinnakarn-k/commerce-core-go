@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -15,6 +16,7 @@ type Repository interface {
 	FindOrderByIdempotencyKey(ctx context.Context, userID int64, idempotencyKey string) (*Order, error)
 	CreateOrder(ctx context.Context, tx pgx.Tx, order *Order) error
 	CreateOrderItem(ctx context.Context, tx pgx.Tx, orderID int64, input CreateOrderItemInput) error
+	MarkPaid(ctx context.Context, tx pgx.Tx, orderID int64) error
 }
 
 type postgresRepository struct {
@@ -279,6 +281,11 @@ func (r *postgresRepository) CreateOrder(ctx context.Context, tx pgx.Tx, order *
 	)
 
 	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			return ErrOrderIdempotencyConflict
+		}
+
 		return fmt.Errorf("create order: %w", err)
 	}
 
@@ -323,6 +330,29 @@ func (r *postgresRepository) CreateOrderItem(ctx context.Context, tx pgx.Tx, ord
 	)
 	if err != nil {
 		return fmt.Errorf("create order item: %w", err)
+	}
+
+	return nil
+}
+
+func (r *postgresRepository) MarkPaid(ctx context.Context, tx pgx.Tx, orderID int64) error {
+	const query = `
+		UPDATE orders
+		SET
+			status = 'paid',
+			paid_at = now(),
+			updated_at = now()
+		WHERE id = $1
+			AND status = 'pending'
+	`
+
+	commandTag, err := tx.Exec(ctx, query, orderID)
+	if err != nil {
+		return fmt.Errorf("mark order paid: %w", err)
+	}
+
+	if commandTag.RowsAffected() == 0 {
+		return ErrOrderNotFound
 	}
 
 	return nil

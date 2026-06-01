@@ -2,6 +2,7 @@ package checkout
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -12,7 +13,6 @@ import (
 	"github.com/pinnakarn-k/commerce-core-go/internal/platform/apperror"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type PaymentRepository interface {
@@ -21,8 +21,8 @@ type PaymentRepository interface {
 }
 
 type CartRepository interface {
-	ListCheckoutItems(ctx context.Context, userID int64) ([]cart.CheckoutItem, error)
-	MarkItemsPurchased(ctx context.Context, tx pgx.Tx, userID int64, orderID int64) error
+	ListCheckoutItems(ctx context.Context, tx pgx.Tx, userID int64) ([]cart.CheckoutItem, error)
+	MarkItemsPurchased(ctx context.Context, tx pgx.Tx, userID int64, orderID int64, cartItemIDs []int64) error
 }
 
 type OrderRepository interface {
@@ -31,12 +31,16 @@ type OrderRepository interface {
 	CreateOrderItem(ctx context.Context, tx pgx.Tx, orderID int64, input order.CreateOrderItemInput) error
 }
 
+type TxBeginner interface {
+	Begin(ctx context.Context) (pgx.Tx, error)
+}
+
 type Service struct {
 	orderRepo   OrderRepository
 	cartRepo    CartRepository
 	productRepo product.Repository
 	paymentRepo PaymentRepository
-	db          *pgxpool.Pool
+	db          TxBeginner
 }
 
 func NewService(
@@ -44,7 +48,7 @@ func NewService(
 	cartRepo CartRepository,
 	productRepo product.Repository,
 	paymentRepo PaymentRepository,
-	db *pgxpool.Pool,
+	db TxBeginner,
 ) (*Service, error) {
 	if orderRepo == nil {
 		return nil, ErrNilRepository
@@ -112,16 +116,7 @@ func (s *Service) Checkout(ctx context.Context, cmd CheckoutCommand) (*CheckoutR
 		}, nil
 	}
 
-	// 3. get snapshot
-	items, err := s.cartRepo.ListCheckoutItems(ctx, userID)
-	if err != nil {
-		return nil, apperror.Internal(err)
-	}
-	if len(items) == 0 {
-		return nil, CartEmpty(nil)
-	}
-
-	// 4. begin tx
+	// 3. begin tx
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
 		return nil, apperror.Internal(err)
@@ -129,6 +124,26 @@ func (s *Service) Checkout(ctx context.Context, cmd CheckoutCommand) (*CheckoutR
 	defer func() {
 		_ = tx.Rollback(ctx)
 	}()
+
+	// 4. get snapshot
+	items, err := s.cartRepo.ListCheckoutItems(ctx, tx, userID)
+	if err != nil {
+		return nil, apperror.Internal(err)
+	}
+
+	if len(items) == 0 {
+		existing, err := s.checkoutFromExistingOrder(ctx, userID, idempotencyKey)
+		if err == nil {
+			return existing, nil
+		}
+
+		return nil, CartEmpty(nil)
+	}
+
+	cartItemIDs := make([]int64, 0, len(items))
+	for _, item := range items {
+		cartItemIDs = append(cartItemIDs, item.CartItemID)
+	}
 
 	// 5. deduct stock (loop)
 	for _, item := range items {
@@ -153,6 +168,11 @@ func (s *Service) Checkout(ctx context.Context, cmd CheckoutCommand) (*CheckoutR
 	}
 
 	if err := s.orderRepo.CreateOrder(ctx, tx, createdOrder); err != nil {
+		if errors.Is(err, order.ErrOrderIdempotencyConflict) {
+			_ = tx.Rollback(ctx)
+			return s.checkoutFromExistingOrder(ctx, userID, idempotencyKey)
+		}
+
 		return nil, apperror.Internal(err)
 	}
 
@@ -174,7 +194,7 @@ func (s *Service) Checkout(ctx context.Context, cmd CheckoutCommand) (*CheckoutR
 	}
 
 	// 9. mark cart_items purchased
-	if err := s.cartRepo.MarkItemsPurchased(ctx, tx, userID, createdOrder.ID); err != nil {
+	if err := s.cartRepo.MarkItemsPurchased(ctx, tx, userID, createdOrder.ID, cartItemIDs); err != nil {
 		return nil, apperror.Internal(err)
 	}
 
@@ -207,6 +227,31 @@ func (s *Service) Checkout(ctx context.Context, cmd CheckoutCommand) (*CheckoutR
 	return &CheckoutResult{
 		Order:   *createdOrder,
 		Payment: *createdPayment,
+	}, nil
+}
+
+func (s *Service) checkoutFromExistingOrder(
+	ctx context.Context,
+	userID int64,
+	idempotencyKey string,
+) (*CheckoutResult, error) {
+	existing, err := s.orderRepo.FindOrderByIdempotencyKey(ctx, userID, idempotencyKey)
+	if err != nil {
+		return nil, apperror.Internal(err)
+	}
+
+	existingPayment, err := s.paymentRepo.FindByOrderIDAndIdempotencyKey(
+		ctx,
+		existing.ID,
+		idempotencyKey,
+	)
+	if err != nil {
+		return nil, apperror.Internal(err)
+	}
+
+	return &CheckoutResult{
+		Order:   *existing,
+		Payment: *existingPayment,
 	}, nil
 }
 

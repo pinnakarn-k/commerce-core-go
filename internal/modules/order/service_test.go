@@ -61,6 +61,15 @@ func (m *MockOrderRepository) CreateOrderItem(
 	return args.Error(0)
 }
 
+func (m *MockOrderRepository) MarkPaid(
+	ctx context.Context,
+	tx pgx.Tx,
+	orderID int64,
+) error {
+	args := m.Called(ctx, tx, orderID)
+	return args.Error(0)
+}
+
 func newTestService(repo Repository) *Service {
 	return &Service{
 		repo: repo,

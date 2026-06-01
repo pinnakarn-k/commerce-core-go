@@ -11,10 +11,10 @@ import (
 
 type Repository interface {
 	ListItems(ctx context.Context, userID int64) ([]CartItem, error)
-	ListCheckoutItems(ctx context.Context, userID int64) ([]CheckoutItem, error)
+	ListCheckoutItems(ctx context.Context, tx pgx.Tx, userID int64) ([]CheckoutItem, error)
 	UpsertItem(ctx context.Context, item *CartItem) error
 	RemoveItem(ctx context.Context, userID int64, productID int64) error
-	MarkItemsPurchased(ctx context.Context, tx pgx.Tx, userID int64, orderID int64) error
+	MarkItemsPurchased(ctx context.Context, tx pgx.Tx, userID int64, orderID int64, cartItemIDs []int64) error
 }
 
 type postgresRepository struct {
@@ -82,7 +82,7 @@ func (r *postgresRepository) ListItems(ctx context.Context, userID int64) ([]Car
 	return items, nil
 }
 
-func (r *postgresRepository) ListCheckoutItems(ctx context.Context, userID int64) ([]CheckoutItem, error) {
+func (r *postgresRepository) ListCheckoutItems(ctx context.Context, tx pgx.Tx, userID int64) ([]CheckoutItem, error) {
 	const query = `
 		SELECT
 			ci.id AS cart_item_id,
@@ -99,9 +99,10 @@ func (r *postgresRepository) ListCheckoutItems(ctx context.Context, userID int64
 			AND ci.status = 'active'
 			AND ci.is_selected = true
 		ORDER BY ci.id ASC
+		FOR UPDATE OF ci
 	`
 
-	rows, err := r.db.Query(ctx, query, userID)
+	rows, err := tx.Query(ctx, query, userID)
 	if err != nil {
 		return nil, fmt.Errorf("list checkout items: %w", err)
 	}
@@ -221,23 +222,27 @@ func (r *postgresRepository) RemoveItem(ctx context.Context, userID int64, produ
 	return nil
 }
 
-func (r *postgresRepository) MarkItemsPurchased(ctx context.Context, tx pgx.Tx, userID int64, orderID int64) error {
+func (r *postgresRepository) MarkItemsPurchased(ctx context.Context, tx pgx.Tx, userID int64, orderID int64, cartItemIDs []int64) error {
+	if len(cartItemIDs) == 0 {
+		return ErrCartEmpty
+	}
+
 	const query = `
 		UPDATE cart_items
 		SET
 			status = 'purchased',
 			order_id = $1
 		WHERE user_id = $2
-		  	AND status = 'active'
-		  	AND is_selected = true
+			AND id = ANY($3)
+			AND status = 'active'
 	`
 
-	res, err := tx.Exec(ctx, query, orderID, userID)
+	res, err := tx.Exec(ctx, query, orderID, userID, cartItemIDs)
 	if err != nil {
 		return fmt.Errorf("mark cart items purchased: %w", err)
 	}
 
-	if res.RowsAffected() == 0 {
+	if res.RowsAffected() != int64(len(cartItemIDs)) {
 		return ErrCartEmpty
 	}
 

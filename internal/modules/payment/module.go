@@ -5,6 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/pinnakarn-k/commerce-core-go/internal/modules/order"
 )
 
 type Module struct {
@@ -16,13 +17,13 @@ func (m *Module) Repository() Repository {
 	return m.repo
 }
 
-func NewModule(pool *pgxpool.Pool) (*Module, error) {
+func NewModule(pool *pgxpool.Pool, orderRepo order.Repository) (*Module, error) {
 	repo, err := NewRepository(pool)
 	if err != nil {
 		return nil, fmt.Errorf("init payment repository: %w", err)
 	}
 
-	service, err := NewService(repo, pool)
+	service, err := NewService(repo, orderRepo, pool)
 	if err != nil {
 		return nil, fmt.Errorf("init payment service: %w", err)
 	}

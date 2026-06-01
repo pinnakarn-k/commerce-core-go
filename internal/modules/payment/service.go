@@ -9,26 +9,36 @@ import (
 	"github.com/pinnakarn-k/commerce-core-go/internal/platform/apperror"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type WebhookRepository interface {
-	GetByProviderPaymentID(ctx context.Context, provider string, providerPaymentID string) (*Payment, error)
+	GetByProviderPaymentID(ctx context.Context, tx pgx.Tx, provider string, providerPaymentID string) (*Payment, error)
 	CreateEvent(ctx context.Context, tx pgx.Tx, event *PaymentEvent) error
 	MarkSucceeded(ctx context.Context, tx pgx.Tx, id int64) error
-	MarkOrderPaid(ctx context.Context, tx pgx.Tx, orderID int64) error
 	MarkFailed(ctx context.Context, tx pgx.Tx, id int64, reason string) error
 	MarkCancelled(ctx context.Context, tx pgx.Tx, id int64) error
 	MarkExpired(ctx context.Context, tx pgx.Tx, id int64) error
 }
 
-type Service struct {
-	repo WebhookRepository
-	db   *pgxpool.Pool
+type OrderRepository interface {
+	MarkPaid(ctx context.Context, tx pgx.Tx, orderID int64) error
 }
 
-func NewService(repo Repository, db *pgxpool.Pool) (*Service, error) {
+type TxBeginner interface {
+	Begin(ctx context.Context) (pgx.Tx, error)
+}
+
+type Service struct {
+	repo      WebhookRepository
+	orderRepo OrderRepository
+	db        TxBeginner
+}
+
+func NewService(repo WebhookRepository, orderRepo OrderRepository, db TxBeginner) (*Service, error) {
 	if repo == nil {
+		return nil, ErrNilRepository
+	}
+	if orderRepo == nil {
 		return nil, ErrNilRepository
 	}
 	if db == nil {
@@ -36,8 +46,9 @@ func NewService(repo Repository, db *pgxpool.Pool) (*Service, error) {
 	}
 
 	return &Service{
-		repo: repo,
-		db:   db,
+		repo:      repo,
+		orderRepo: orderRepo,
+		db:        db,
 	}, nil
 }
 
@@ -59,8 +70,17 @@ func (s *Service) HandleMockWebhook(ctx context.Context, cmd MockWebhookCommand)
 		return nil, InvalidProviderPaymentID(nil)
 	}
 
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return nil, apperror.Internal(err)
+	}
+	defer func() {
+		_ = tx.Rollback(ctx)
+	}()
+
 	payment, err := s.repo.GetByProviderPaymentID(
 		ctx,
+		tx,
 		provider,
 		providerPaymentID,
 	)
@@ -72,6 +92,10 @@ func (s *Service) HandleMockWebhook(ctx context.Context, cmd MockWebhookCommand)
 	}
 
 	if payment.Status.IsFinal() {
+		if err := tx.Commit(ctx); err != nil {
+			return nil, apperror.Internal(err)
+		}
+
 		return payment, nil
 	}
 
@@ -79,14 +103,6 @@ func (s *Service) HandleMockWebhook(ctx context.Context, cmd MockWebhookCommand)
 	if err != nil {
 		return nil, apperror.Internal(err)
 	}
-
-	tx, err := s.db.Begin(ctx)
-	if err != nil {
-		return nil, apperror.Internal(err)
-	}
-	defer func() {
-		_ = tx.Rollback(ctx)
-	}()
 
 	event := &PaymentEvent{
 		Provider:        payment.Provider,
@@ -98,6 +114,10 @@ func (s *Service) HandleMockWebhook(ctx context.Context, cmd MockWebhookCommand)
 
 	if err := s.repo.CreateEvent(ctx, tx, event); err != nil {
 		if errors.Is(err, ErrPaymentEventAlreadyProcessed) {
+			if err := tx.Commit(ctx); err != nil {
+				return nil, apperror.Internal(err)
+			}
+
 			return payment, nil
 		}
 
@@ -110,7 +130,7 @@ func (s *Service) HandleMockWebhook(ctx context.Context, cmd MockWebhookCommand)
 			return nil, apperror.Internal(err)
 		}
 
-		if err := s.repo.MarkOrderPaid(ctx, tx, payment.OrderID); err != nil {
+		if err := s.orderRepo.MarkPaid(ctx, tx, payment.OrderID); err != nil {
 			return nil, apperror.Internal(err)
 		}
 

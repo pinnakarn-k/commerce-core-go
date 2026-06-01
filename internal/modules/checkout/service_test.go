@@ -12,6 +12,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+
+	pgxmock "github.com/pashagolub/pgxmock/v4"
 )
 
 type MockOrderRepository struct {
@@ -38,15 +40,25 @@ type MockCartRepository struct {
 	mock.Mock
 }
 
-func (m *MockCartRepository) ListCheckoutItems(ctx context.Context, userID int64) ([]cart.CheckoutItem, error) {
-	args := m.Called(ctx, userID)
+func (m *MockCartRepository) ListCheckoutItems(ctx context.Context, tx pgx.Tx, userID int64) ([]cart.CheckoutItem, error) {
+	args := m.Called(ctx, tx, userID)
 	items, _ := args.Get(0).([]cart.CheckoutItem)
 	return items, args.Error(1)
 }
 
-func (m *MockCartRepository) MarkItemsPurchased(ctx context.Context, tx pgx.Tx, userID int64, orderID int64) error {
-	args := m.Called(ctx, tx, userID, orderID)
+func (m *MockCartRepository) MarkItemsPurchased(ctx context.Context, tx pgx.Tx, userID int64, orderID int64, cartItemIDs []int64) error {
+	args := m.Called(ctx, tx, userID, orderID, cartItemIDs)
 	return args.Error(0)
+}
+
+type MockDB struct {
+	mock.Mock
+}
+
+func (m *MockDB) Begin(ctx context.Context) (pgx.Tx, error) {
+	args := m.Called(ctx)
+	tx, _ := args.Get(0).(pgx.Tx)
+	return tx, args.Error(1)
 }
 
 type MockPaymentRepository struct {
@@ -115,23 +127,36 @@ func TestService_Checkout_IdempotencyHit(t *testing.T) {
 }
 
 func TestService_Checkout_CartEmpty(t *testing.T) {
+	ctx := context.Background()
+
 	orderRepo := new(MockOrderRepository)
 	cartRepo := new(MockCartRepository)
+
+	mockDB := new(MockDB)
+
+	tx, err := pgxmock.NewConn()
+	require.NoError(t, err)
+	defer tx.Close(ctx)
 
 	orderRepo.
 		On("FindOrderByIdempotencyKey", mock.Anything, int64(1), "idem-001").
 		Return((*order.Order)(nil), order.ErrOrderNotFound)
 
+	mockDB.
+		On("Begin", mock.Anything).
+		Return(tx, nil)
+
 	cartRepo.
-		On("ListCheckoutItems", mock.Anything, int64(1)).
+		On("ListCheckoutItems", mock.Anything, tx, int64(1)).
 		Return([]cart.CheckoutItem{}, nil)
 
 	svc := &Service{
 		orderRepo: orderRepo,
 		cartRepo:  cartRepo,
+		db:        mockDB,
 	}
 
-	_, err := svc.Checkout(context.Background(), CheckoutCommand{
+	_, err = svc.Checkout(ctx, CheckoutCommand{
 		UserID:          1,
 		IdempotencyKey:  "idem-001",
 		PaymentProvider: "mock",
@@ -141,4 +166,8 @@ func TestService_Checkout_CartEmpty(t *testing.T) {
 	var appErr *apperror.AppError
 	require.ErrorAs(t, err, &appErr)
 	require.Equal(t, "CART_EMPTY", appErr.Code)
+
+	orderRepo.AssertExpectations(t)
+	cartRepo.AssertExpectations(t)
+	mockDB.AssertExpectations(t)
 }

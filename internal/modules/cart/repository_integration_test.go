@@ -246,7 +246,6 @@ func TestRepository_ListCheckoutItems_ReturnsOnlySelectedActiveItems(t *testing.
 		Currency:    "THB",
 		StockQty:    10,
 	})
-	require.NoError(t, err)
 
 	_, err = db.Exec(
 		ctx,
@@ -268,9 +267,15 @@ func TestRepository_ListCheckoutItems_ReturnsOnlySelectedActiveItems(t *testing.
 	)
 	require.NoError(t, err)
 
-	items, err := repo.ListCheckoutItems(ctx, userID)
-
+	tx, err := db.Begin(ctx)
 	require.NoError(t, err)
+	defer func() {
+		_ = tx.Rollback(ctx)
+	}()
+
+	items, err := repo.ListCheckoutItems(ctx, tx, userID)
+	require.NoError(t, err)
+
 	require.Len(t, items, 1)
 
 	require.Equal(t, productID, items[0].ProductID)
@@ -353,7 +358,9 @@ func TestRepository_MarkItemsPurchased_Success(t *testing.T) {
 
 	orderID := testutil.CreateTestOrder(t, db, userID)
 
-	_, err = db.Exec(
+	var cartItemID int64
+
+	err = db.QueryRow(
 		ctx,
 		`
 		INSERT INTO cart_items (
@@ -363,16 +370,17 @@ func TestRepository_MarkItemsPurchased_Success(t *testing.T) {
 			is_selected
 		)
 		VALUES ($1, $2, 2, true)
+		RETURNING id
 		`,
 		userID,
 		productID,
-	)
+	).Scan(&cartItemID)
 	require.NoError(t, err)
 
 	tx, err := db.Begin(ctx)
 	require.NoError(t, err)
 
-	err = repo.MarkItemsPurchased(ctx, tx, userID, orderID)
+	err = repo.MarkItemsPurchased(ctx, tx, userID, orderID, []int64{cartItemID})
 	require.NoError(t, err)
 
 	err = tx.Commit(ctx)
@@ -385,11 +393,9 @@ func TestRepository_MarkItemsPurchased_Success(t *testing.T) {
 		`
 		SELECT status, order_id
 		FROM cart_items
-		WHERE user_id = $1
-			AND product_id = $2
+		WHERE id = $1
 		`,
-		userID,
-		productID,
+		cartItemID,
 	).Scan(&status, &gotOrderID)
 	require.NoError(t, err)
 
@@ -415,7 +421,7 @@ func TestRepository_MarkItemsPurchased_CartEmpty(t *testing.T) {
 		_ = tx.Rollback(ctx)
 	}()
 
-	err = repo.MarkItemsPurchased(ctx, tx, userID, orderID)
+	err = repo.MarkItemsPurchased(ctx, tx, userID, orderID, []int64{})
 
 	require.ErrorIs(t, err, ErrCartEmpty)
 }

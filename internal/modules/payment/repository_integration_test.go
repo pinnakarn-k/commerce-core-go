@@ -20,7 +20,6 @@ func TestRepository_CreatePayment_Success(t *testing.T) {
 	require.NoError(t, err)
 
 	userID := testutil.CreateTestUser(t, db)
-
 	orderID := testutil.CreateTestOrder(t, db, userID)
 
 	tx, err := db.Begin(ctx)
@@ -84,14 +83,12 @@ func TestRepository_FindByOrderIDAndIdempotencyKey_Success(t *testing.T) {
 	require.NoError(t, err)
 
 	userID := testutil.CreateTestUser(t, db)
-
 	orderID := testutil.CreateTestOrder(t, db, userID)
 
 	paymentID := testpayment.CreatePayment(t, db, testpayment.CreatePaymentInput{
 		OrderID: orderID,
 		Amount:  2000,
 	})
-	require.NoError(t, err)
 
 	payment, err := repo.FindByOrderIDAndIdempotencyKey(
 		ctx,
@@ -100,7 +97,6 @@ func TestRepository_FindByOrderIDAndIdempotencyKey_Success(t *testing.T) {
 	)
 
 	require.NoError(t, err)
-
 	require.Equal(t, paymentID, payment.ID)
 	require.Equal(t, orderID, payment.OrderID)
 	require.Equal(t, "idem-001", payment.IdempotencyKey)
@@ -141,14 +137,12 @@ func TestRepository_GetByID_Success(t *testing.T) {
 	require.NoError(t, err)
 
 	userID := testutil.CreateTestUser(t, db)
-
 	orderID := testutil.CreateTestOrder(t, db, userID)
 
 	paymentID := testpayment.CreatePayment(t, db, testpayment.CreatePaymentInput{
 		OrderID: orderID,
 		Amount:  2000,
 	})
-	require.NoError(t, err)
 
 	payment, err := repo.GetByID(ctx, paymentID)
 
@@ -185,14 +179,12 @@ func TestRepository_CreateEvent_Duplicate(t *testing.T) {
 	require.NoError(t, err)
 
 	userID := testutil.CreateTestUser(t, db)
-
 	orderID := testutil.CreateTestOrder(t, db, userID)
 
 	paymentID := testpayment.CreatePayment(t, db, testpayment.CreatePaymentInput{
 		OrderID: orderID,
 		Amount:  2000,
 	})
-	require.NoError(t, err)
 
 	tx, err := db.Begin(ctx)
 	require.NoError(t, err)
@@ -240,14 +232,12 @@ func TestRepository_CreateEvent_Success(t *testing.T) {
 	require.NoError(t, err)
 
 	userID := testutil.CreateTestUser(t, db)
-
 	orderID := testutil.CreateTestOrder(t, db, userID)
 
 	paymentID := testpayment.CreatePayment(t, db, testpayment.CreatePaymentInput{
 		OrderID: orderID,
 		Amount:  2000,
 	})
-	require.NoError(t, err)
 
 	tx, err := db.Begin(ctx)
 	require.NoError(t, err)
@@ -285,14 +275,12 @@ func TestRepository_MarkSucceeded_Success(t *testing.T) {
 	require.NoError(t, err)
 
 	userID := testutil.CreateTestUser(t, db)
-
 	orderID := testutil.CreateTestOrder(t, db, userID)
 
 	paymentID := testpayment.CreatePayment(t, db, testpayment.CreatePaymentInput{
 		OrderID: orderID,
 		Amount:  2000,
 	})
-	require.NoError(t, err)
 
 	tx, err := db.Begin(ctx)
 	require.NoError(t, err)
@@ -321,46 +309,6 @@ func TestRepository_MarkSucceeded_Success(t *testing.T) {
 	require.NotNil(t, paidAt)
 }
 
-func TestRepository_MarkOrderPaid_Success(t *testing.T) {
-	ctx := context.Background()
-
-	db := testutil.NewTestDB(t)
-	testutil.TruncateTables(t, db)
-
-	repo, err := NewRepository(db)
-	require.NoError(t, err)
-
-	userID := testutil.CreateTestUser(t, db)
-
-	orderID := testutil.CreateTestOrder(t, db, userID)
-
-	tx, err := db.Begin(ctx)
-	require.NoError(t, err)
-
-	err = repo.MarkOrderPaid(ctx, tx, orderID)
-	require.NoError(t, err)
-
-	err = tx.Commit(ctx)
-	require.NoError(t, err)
-
-	var status string
-	var paidAt *string
-
-	err = db.QueryRow(
-		ctx,
-		`
-		SELECT status, paid_at::text
-		FROM orders
-		WHERE id = $1
-		`,
-		orderID,
-	).Scan(&status, &paidAt)
-	require.NoError(t, err)
-
-	require.Equal(t, "paid", status)
-	require.NotNil(t, paidAt)
-}
-
 func TestRepository_MarkFailed_Success(t *testing.T) {
 	ctx := context.Background()
 
@@ -371,14 +319,12 @@ func TestRepository_MarkFailed_Success(t *testing.T) {
 	require.NoError(t, err)
 
 	userID := testutil.CreateTestUser(t, db)
-
 	orderID := testutil.CreateTestOrder(t, db, userID)
 
 	paymentID := testpayment.CreatePayment(t, db, testpayment.CreatePaymentInput{
 		OrderID: orderID,
 		Amount:  2000,
 	})
-	require.NoError(t, err)
 
 	tx, err := db.Begin(ctx)
 	require.NoError(t, err)
@@ -416,7 +362,6 @@ func TestRepository_MarkCancelled_Success(t *testing.T) {
 	require.NoError(t, err)
 
 	userID := testutil.CreateTestUser(t, db)
-
 	orderID := testutil.CreateTestOrder(t, db, userID)
 
 	paymentID := testpayment.CreatePayment(t, db, testpayment.CreatePaymentInput{
@@ -457,14 +402,12 @@ func TestRepository_MarkExpired_Success(t *testing.T) {
 	require.NoError(t, err)
 
 	userID := testutil.CreateTestUser(t, db)
-
 	orderID := testutil.CreateTestOrder(t, db, userID)
 
 	paymentID := testpayment.CreatePayment(t, db, testpayment.CreatePaymentInput{
 		OrderID: orderID,
 		Amount:  2000,
 	})
-	require.NoError(t, err)
 
 	tx, err := db.Begin(ctx)
 	require.NoError(t, err)
@@ -499,16 +442,25 @@ func TestRepository_GetByProviderPaymentID_Success(t *testing.T) {
 	require.NoError(t, err)
 
 	userID := testutil.CreateTestUser(t, db)
-
 	orderID := testutil.CreateTestOrder(t, db, userID)
 
 	paymentID := testpayment.CreatePayment(t, db, testpayment.CreatePaymentInput{
 		OrderID: orderID,
 		Amount:  2000,
 	})
-	require.NoError(t, err)
 
-	got, err := repo.GetByProviderPaymentID(ctx, "mock", "mock_pay_001")
+	tx, err := db.Begin(ctx)
+	require.NoError(t, err)
+	defer func() {
+		_ = tx.Rollback(ctx)
+	}()
+
+	got, err := repo.GetByProviderPaymentID(
+		ctx,
+		tx,
+		"mock",
+		"mock_pay_001",
+	)
 
 	require.NoError(t, err)
 	require.Equal(t, paymentID, got.ID)
@@ -527,8 +479,15 @@ func TestRepository_GetByProviderPaymentID_NotFound(t *testing.T) {
 	repo, err := NewRepository(db)
 	require.NoError(t, err)
 
+	tx, err := db.Begin(ctx)
+	require.NoError(t, err)
+	defer func() {
+		_ = tx.Rollback(ctx)
+	}()
+
 	got, err := repo.GetByProviderPaymentID(
 		ctx,
+		tx,
 		"mock",
 		"mock_pay_not_found",
 	)

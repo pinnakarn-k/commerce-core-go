@@ -16,13 +16,12 @@ type Repository interface {
 	GetByID(ctx context.Context, id int64) (*Payment, error)
 
 	MarkSucceeded(ctx context.Context, tx pgx.Tx, id int64) error
-	MarkOrderPaid(ctx context.Context, tx pgx.Tx, orderID int64) error
 	MarkFailed(ctx context.Context, tx pgx.Tx, id int64, reason string) error
 	MarkCancelled(ctx context.Context, tx pgx.Tx, id int64) error
 	MarkExpired(ctx context.Context, tx pgx.Tx, id int64) error
 
 	CreateEvent(ctx context.Context, tx pgx.Tx, event *PaymentEvent) error
-	GetByProviderPaymentID(ctx context.Context, provider string, providerPaymentID string) (*Payment, error)
+	GetByProviderPaymentID(ctx context.Context, tx pgx.Tx, provider string, providerPaymentID string) (*Payment, error)
 }
 
 type postgresRepository struct {
@@ -298,37 +297,6 @@ func (r *postgresRepository) MarkSucceeded(ctx context.Context, tx pgx.Tx, id in
 	return nil
 }
 
-func (r *postgresRepository) MarkOrderPaid(
-	ctx context.Context,
-	tx pgx.Tx,
-	orderID int64,
-) error {
-	const query = `
-		UPDATE orders
-		SET
-			status = 'paid',
-			paid_at = now(),
-			updated_at = now()
-		WHERE id = $1
-			AND status = 'pending'
-	`
-
-	commandTag, err := tx.Exec(
-		ctx,
-		query,
-		orderID,
-	)
-	if err != nil {
-		return fmt.Errorf("mark order paid: %w", err)
-	}
-
-	if commandTag.RowsAffected() == 0 {
-		return ErrPaymentNotFound
-	}
-
-	return nil
-}
-
 func (r *postgresRepository) MarkFailed(ctx context.Context, tx pgx.Tx, id int64, reason string) error {
 	const query = `
 		UPDATE payments
@@ -460,7 +428,7 @@ func isUniqueViolation(err error) bool {
 	return errors.As(err, &pgErr) && pgErr.Code == "23505"
 }
 
-func (r *postgresRepository) GetByProviderPaymentID(ctx context.Context, provider string, providerPaymentID string) (*Payment, error) {
+func (r *postgresRepository) GetByProviderPaymentID(ctx context.Context, tx pgx.Tx, provider string, providerPaymentID string) (*Payment, error) {
 	const query = `
         SELECT
             id,
@@ -484,11 +452,12 @@ func (r *postgresRepository) GetByProviderPaymentID(ctx context.Context, provide
         FROM payments
         WHERE provider = $1
             AND provider_payment_id = $2
+		FOR UPDATE
     `
 
 	var payment Payment
 
-	err := r.db.QueryRow(
+	err := tx.QueryRow(
 		ctx,
 		query,
 		provider,

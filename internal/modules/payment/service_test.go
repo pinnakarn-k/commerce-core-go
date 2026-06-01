@@ -7,12 +7,32 @@ import (
 	"github.com/pinnakarn-k/commerce-core-go/internal/platform/apperror"
 
 	"github.com/jackc/pgx/v5"
+	pgxmock "github.com/pashagolub/pgxmock/v4"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
+type MockDB struct {
+	mock.Mock
+}
+
+func (m *MockDB) Begin(ctx context.Context) (pgx.Tx, error) {
+	args := m.Called(ctx)
+	tx, _ := args.Get(0).(pgx.Tx)
+	return tx, args.Error(1)
+}
+
 type MockRepository struct {
 	mock.Mock
+}
+
+type MockOrderRepository struct {
+	mock.Mock
+}
+
+func (m *MockOrderRepository) MarkPaid(ctx context.Context, tx pgx.Tx, orderID int64) error {
+	args := m.Called(ctx, tx, orderID)
+	return args.Error(0)
 }
 
 func (m *MockRepository) CreatePayment(
@@ -45,10 +65,11 @@ func (m *MockRepository) GetByID(
 
 func (m *MockRepository) GetByProviderPaymentID(
 	ctx context.Context,
+	tx pgx.Tx,
 	provider string,
 	providerPaymentID string,
 ) (*Payment, error) {
-	args := m.Called(ctx, provider, providerPaymentID)
+	args := m.Called(ctx, tx, provider, providerPaymentID)
 	payment, _ := args.Get(0).(*Payment)
 	return payment, args.Error(1)
 }
@@ -59,15 +80,6 @@ func (m *MockRepository) MarkSucceeded(
 	id int64,
 ) error {
 	args := m.Called(ctx, tx, id)
-	return args.Error(0)
-}
-
-func (m *MockRepository) MarkOrderPaid(
-	ctx context.Context,
-	tx pgx.Tx,
-	orderID int64,
-) error {
-	args := m.Called(ctx, tx, orderID)
 	return args.Error(0)
 }
 
@@ -171,22 +183,37 @@ func TestService_HandleMockWebhook_InvalidProviderPaymentID(t *testing.T) {
 }
 
 func TestService_HandleMockWebhook_PaymentNotFound(t *testing.T) {
+	ctx := context.Background()
+
 	repo := new(MockRepository)
+	orderRepo := new(MockOrderRepository)
+	db := new(MockDB)
+
+	tx, err := pgxmock.NewConn()
+	require.NoError(t, err)
+	defer tx.Close(ctx)
+
+	db.
+		On("Begin", mock.Anything).
+		Return(tx, nil)
 
 	repo.
 		On(
 			"GetByProviderPaymentID",
 			mock.Anything,
+			tx,
 			"mock",
 			"mock_pay_1",
 		).
 		Return((*Payment)(nil), ErrPaymentNotFound)
 
 	svc := &Service{
-		repo: repo,
+		repo:      repo,
+		orderRepo: orderRepo,
+		db:        db,
 	}
 
-	_, err := svc.HandleMockWebhook(context.Background(), MockWebhookCommand{
+	_, err = svc.HandleMockWebhook(ctx, MockWebhookCommand{
 		EventID:           "evt-001",
 		Provider:          "mock",
 		ProviderPaymentID: "mock_pay_1",
@@ -198,10 +225,19 @@ func TestService_HandleMockWebhook_PaymentNotFound(t *testing.T) {
 	require.Equal(t, "PAYMENT_NOT_FOUND", appErr.Code)
 
 	repo.AssertExpectations(t)
+	db.AssertExpectations(t)
 }
 
 func TestService_HandleMockWebhook_FinalPayment_ReturnsExistingPayment(t *testing.T) {
+	ctx := context.Background()
+
 	repo := new(MockRepository)
+	orderRepo := new(MockOrderRepository)
+	db := new(MockDB)
+
+	tx, err := pgxmock.NewConn()
+	require.NoError(t, err)
+	defer tx.Close(ctx)
 
 	existingPayment := &Payment{
 		ID:                1,
@@ -215,21 +251,29 @@ func TestService_HandleMockWebhook_FinalPayment_ReturnsExistingPayment(t *testin
 		Currency:          "THB",
 	}
 
+	db.
+		On("Begin", mock.Anything).
+		Return(tx, nil)
+
+	tx.ExpectCommit()
+
 	repo.
 		On(
 			"GetByProviderPaymentID",
 			mock.Anything,
+			tx,
 			"mock",
 			"mock_pay_10",
 		).
 		Return(existingPayment, nil)
 
 	svc := &Service{
-		repo: repo,
-		db:   nil,
+		repo:      repo,
+		orderRepo: orderRepo,
+		db:        db,
 	}
 
-	got, err := svc.HandleMockWebhook(context.Background(), MockWebhookCommand{
+	got, err := svc.HandleMockWebhook(ctx, MockWebhookCommand{
 		EventID:           "evt-002",
 		Provider:          "mock",
 		ProviderPaymentID: "mock_pay_10",
@@ -240,5 +284,8 @@ func TestService_HandleMockWebhook_FinalPayment_ReturnsExistingPayment(t *testin
 	require.Equal(t, existingPayment, got)
 	require.Equal(t, PaymentStatusSucceeded, got.Status)
 
+	require.NoError(t, tx.ExpectationsWereMet())
+
 	repo.AssertExpectations(t)
+	db.AssertExpectations(t)
 }

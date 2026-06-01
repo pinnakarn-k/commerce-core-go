@@ -7,10 +7,11 @@ import (
 )
 
 var (
-	ErrNilService    = errors.New("order handler: service is nil")
-	ErrNilRepository = errors.New("nil order repository")
-	ErrNilDB         = errors.New("order repository: db is nil")
-	ErrOrderNotFound = errors.New("order not found")
+	ErrNilService               = errors.New("order handler: service is nil")
+	ErrNilRepository            = errors.New("nil order repository")
+	ErrNilDB                    = errors.New("order repository: db is nil")
+	ErrOrderNotFound            = errors.New("order not found")
+	ErrOrderIdempotencyConflict = errors.New("order idempotency conflict")
 )
 
 func OrderNotFound(err error) *apperror.AppError {
