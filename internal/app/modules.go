@@ -57,7 +57,7 @@ func (a *App) registerModules(router gin.IRouter, db *postgres.Postgres) error {
 
 	orderModule, err := order.NewModule(db.Pool)
 	if err != nil {
-		return fmt.Errorf("%w: %w", ErrInitCartModule, err)
+		return fmt.Errorf("%w: %w", ErrInitOrderModule, err)
 	}
 
 	orderGRPCHandler := order.NewGRPCHandler(orderModule.Service())
@@ -72,7 +72,7 @@ func (a *App) registerModules(router gin.IRouter, db *postgres.Postgres) error {
 		paymentModule.Repository(),
 	)
 	if err != nil {
-		return fmt.Errorf("%w: %w", ErrInitCartModule, err)
+		return fmt.Errorf("%w: %w", ErrInitCheckoutModule, err)
 	}
 
 	authModule.RegisterRoutes(router)
