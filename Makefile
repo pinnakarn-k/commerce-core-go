@@ -34,7 +34,7 @@ help:
 	@echo "make migrate-test-up  - run test migrations"
 
 # ========================
-# 🟢 Local
+# Local
 # ========================
 
 run:
@@ -53,14 +53,14 @@ tidy:
 	go mod tidy
 
 # ========================
-# 🔍 Quality
+# Quality
 # ========================
 
 lint:
 	golangci-lint run --timeout=5m
 
 # ========================
-# 🐳 Docker (dev)
+# Docker (dev)
 # ========================
 
 dev-up:
@@ -83,7 +83,7 @@ dev-restart:
 	$(COMPOSE_DEV) up --build
 
 # ========================
-# 🗄️ Migration
+# Migration
 # ========================
 
 migrate-create:
@@ -109,7 +109,7 @@ migrate-test-down:
 
 
 # ========================
-# 🧪 Test Database
+# Test Database
 # ========================
 
 test-up:
@@ -128,7 +128,7 @@ test-logs:
 	$(COMPOSE_TEST) logs -f
 
 # ========================
-# 🧪 Tests
+# Tests
 # ========================
 
 test:
